@@ -31,7 +31,7 @@ class EarlyStopOnOverfitting(Callback):
         current_loss = logs.get("loss")
 
         # Check if validation loss has not improved
-        if current_loss > current_val_loss * 1.5:
+        if current_loss < current_val_loss * 0.5:
             self.wait += 1
             print(f"Overfitting detected: Epoch {epoch + 1}, wait = {self.wait}/{self.patience}")
         else:
