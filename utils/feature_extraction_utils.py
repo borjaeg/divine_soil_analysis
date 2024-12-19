@@ -10,6 +10,78 @@ from tensorflow.keras.models import Model
 from tensorflow.keras import layers
 from tensorflow.keras import callbacks
 
+import tensorflow as tf
+from tensorflow.keras.callbacks import Callback
+
+
+import tensorflow as tf
+from tensorflow.keras.callbacks import Callback
+
+class EarlyStopOnOverfitting(Callback):
+    def __init__(self, patience=10):
+        super(EarlyStopOnOverfitting, self).__init__()
+        self.patience = patience  # Number of epochs to wait before stopping
+        self.wait = 0  # Counter for epochs without improvement
+        self.best_val_loss = float('inf')  # Best validation loss seen so far
+        self.best_weights = None
+
+    def on_epoch_end(self, epoch, logs=None):
+        # Get the current training and validation losses
+        current_val_loss = logs.get("val_loss")
+        current_loss = logs.get("loss")
+
+        # Check if validation loss has not improved
+        if current_loss > current_val_loss * 1.5:
+            self.wait += 1
+            print(f"Overfitting detected: Epoch {epoch + 1}, wait = {self.wait}/{self.patience}")
+        else:
+            # Reset wait counter if validation loss improves
+            self.best_val_loss = current_val_loss
+            self.best_weights = self.model.get_weights()
+            self.wait = 0
+
+        # Stop training if patience is exceeded
+        if self.wait >= self.patience:
+            print(f"Stopping early at epoch {epoch + 1} due to overfitting.")
+            self.model.stop_training = True
+            self.model.set_weights(self.best_weights)
+
+class DetectUnstableTraining(Callback):
+    def __init__(self, patience=20):
+        super(DetectUnstableTraining, self).__init__()
+        self.patience = patience  # Number of epochs to monitor
+        self.loss_history = []  # Store loss changes
+        self.epoch_counter = 0  # Counter for unstable epochs
+        self.best_weights = None
+
+    def on_epoch_end(self, epoch, logs=None):
+        # Get the current loss
+        current_loss = logs.get("loss")
+        
+        # Store the current loss and calculate the difference
+        if len(self.loss_history) > 0:
+            loss_diff = abs(current_loss - self.loss_history[-1])
+            mean_change = sum(abs(self.loss_history[i] - self.loss_history[i - 1]) for i in range(1, len(self.loss_history))) / max(len(self.loss_history) - 1, 1)
+            
+            # Check for instability: current change exceeds mean of previous changes
+            if loss_diff > mean_change:
+                self.epoch_counter += 1
+                print(f"Unstable training detected at epoch {epoch + 1}. Difference: {loss_diff:.4f}, Mean of previous changes: {mean_change:.4f}, Counter: {self.epoch_counter}/{self.patience}")
+            else:
+                self.epoch_counter = 0  # Reset if training stabilizes
+        else:
+            mean_change = 0
+
+        # Stop training if unstable condition persists for `patience` epochs
+        if self.epoch_counter >= self.patience:
+            print(f"Stopping early at epoch {epoch + 1} due to unstable training.")
+            self.model.stop_training = True
+            self.model.set_weights(self.best_weights)
+
+        # Append current loss to the history
+        self.loss_history.append(current_loss)
+
+
 
 def crate_autoencoder(n_inputs, n_bottleneck):
     # define encoder
@@ -39,7 +111,7 @@ def crate_autoencoder(n_inputs, n_bottleneck):
 
 def get_encoded_features(autoencoder, encoder, train_ndvi_input, test_ndvi_input):
     checkpoint_dir = "./autoencoder_checkpoints"
-    os.makedirs(checkpoint_dir, exist_ok=True)
+    #os.makedirs(checkpoint_dir, exist_ok=True)
 
     # Path to save the best model
     checkpoint_filepath = os.path.join(checkpoint_dir, "best_autoencoder.weights.h5")
@@ -67,7 +139,9 @@ def get_encoded_features(autoencoder, encoder, train_ndvi_input, test_ndvi_input
         batch_size=16,
         verbose=2,
         validation_data=(test_ndvi_input, test_ndvi_input),
-        callbacks=[early_stopping],
+        callbacks=[early_stopping,
+                   EarlyStopOnOverfitting(patience=10),  # Overfitting detection
+                   DetectUnstableTraining(patience=20)]  # Unstable training detection],
     )
     #autoencoder.load_weights(checkpoint_filepath)
     
