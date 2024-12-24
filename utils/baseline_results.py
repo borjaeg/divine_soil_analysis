@@ -40,14 +40,14 @@ def compute_baseline_results(
     train_ndvi_input, train_yield, test_ndvi_input, test_yield
 ):
     
-    #print("Number of NaNs:", np.isnan(test_ndvi_input).sum())
+    #print("Number of NaNs:", )
 
     # Check for infinity values
     print("Number of infinities:", np.isinf(test_ndvi_input).sum())
-    if np.isinf(test_ndvi_input).sum() > 0:
+    if np.isinf(test_ndvi_input).sum() > 0 or np.isnan(test_ndvi_input).sum():
         test_ndvi_input = np.nan_to_num(test_ndvi_input.copy(), nan=0.0, posinf=0.0, neginf=0.0)
-    if np.isinf(train_ndvi_input).sum() > 0:
-        train_ndvi_input = np.nan_to_num(test_ndvi_input.copy(), nan=0.0, posinf=0.0, neginf=0.0)
+    if np.isinf(train_ndvi_input).sum() > 0 or np.isnan(train_ndvi_input).sum():
+        train_ndvi_input = np.nan_to_num(train_ndvi_input.copy(), nan=0.0, posinf=0.0, neginf=0.0)
 
     # Check for extremely large values
     #print("Max value:", np.max(test_ndvi_input))

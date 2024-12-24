@@ -14,9 +14,6 @@ import tensorflow as tf
 from tensorflow.keras.callbacks import Callback
 
 
-import tensorflow as tf
-from tensorflow.keras.callbacks import Callback
-
 class EarlyStopOnOverfitting(Callback):
     def __init__(self, patience=10):
         super(EarlyStopOnOverfitting, self).__init__()
@@ -81,20 +78,20 @@ class DetectUnstableTraining(Callback):
         # Append current loss to the history
         self.loss_history.append(current_loss)
 
-
-
-def crate_autoencoder(n_inputs, n_bottleneck):
+def crate_autoencoder(n_inputs, n_bottleneck, is_linear=True):
     # define encoder
     visible = layers.Input(shape=(n_inputs,), name="inputs")
     e = layers.Dense(n_inputs * 2)(visible)
     e = layers.BatchNormalization()(e)
-    e = layers.ReLU()(e)
+    if not is_linear:
+        e = layers.ReLU()(e)
     # define bottleneck
     bottleneck = layers.Dense(n_bottleneck, name="bottleneck")(e)
     # define decoder
     d = layers.Dense(n_inputs * 2)(bottleneck)
     d = layers.BatchNormalization()(d)
-    d = layers.ReLU()(d)
+    if not is_linear:
+        d = layers.ReLU()(d)
     # output layer
     output = layers.Dense(n_inputs, activation="linear")(d)
     # define autoencoder model
@@ -162,7 +159,9 @@ def get_encoded_features(autoencoder, encoder, train_ndvi_input, test_ndvi_input
 def extract_features(
     train_ndvi_input, test_ndvi_input, num_features_to_extract, mode: str = "autoencoder"
 ):
-    if mode == "autoencoder":
+    if mode.startswith("autoencoder"):
+        is_linear = True if mode.split("-")[1] == "linear" else False
+        
         if num_features_to_extract == -1:
             pca = PCA()
             pca.fit(train_ndvi_input)
@@ -173,7 +172,11 @@ def extract_features(
             pca = PCA(n_components=num_features_to_extract)
             pca.fit(train_ndvi_input)
             num_features_to_extract = pca.n_components_
-        autoencoder, encoder = crate_autoencoder(train_ndvi_input.shape[1], num_features_to_extract)
+        if num_features_to_extract == 0:
+            num_features_to_extract = 1
+        autoencoder, encoder = crate_autoencoder(train_ndvi_input.shape[1], 
+                                                 num_features_to_extract,
+                                                 is_linear)
         train_ndvi_input_ext, test_ndvi_input_ext, history = get_encoded_features(
             autoencoder, encoder, train_ndvi_input, test_ndvi_input
         )
@@ -184,17 +187,42 @@ def extract_features(
             eigenvalues = pca.explained_variance_
             # Select components with eigenvalues > 1 (Kaiser's Criterion)
             num_features_to_extract = np.sum(eigenvalues > 1)
+        if num_features_to_extract == 0:
+            num_features_to_extract = 1
         extractor = PCA(n_components=num_features_to_extract)
         train_ndvi_input_ext = extractor.fit_transform(train_ndvi_input)
         test_ndvi_input_ext = extractor.transform(test_ndvi_input)
         history = {"val_loss": [0.0], "loss": [0.0]}
+    elif mode.startswith("pca-umap"):
+        n_neighbors = int(mode.split("-")[-1])
+        distance_metric = mode.split("-")[-2]
+        if num_features_to_extract == -1:
+            pca = PCA()
+            pca.fit(train_ndvi_input)
+            eigenvalues = pca.explained_variance_
+            # Select components with eigenvalues > 1 (Kaiser's Criterion)
+            num_features_to_extract = np.sum(eigenvalues > 1)
+        if num_features_to_extract < 2:
+            num_features_to_extract = 2
+        extractor = PCA(n_components=num_features_to_extract)
+        train_ndvi_input_ext = extractor.fit_transform(train_ndvi_input)
+        test_ndvi_input_ext = extractor.transform(test_ndvi_input)
+        extractor = umap.UMAP(n_neighbors=n_neighbors, 
+                              metric=distance_metric,
+                              n_components=num_features_to_extract//2)
+        train_ndvi_input_ext = extractor.fit_transform(train_ndvi_input_ext)
+        test_ndvi_input_ext = extractor.transform(test_ndvi_input_ext)
+        history = {"val_loss": [0.0], "loss": [0.0]}
+    
     elif mode == "tsne":
         extractor = TSNE(n_components=num_features_to_extract)
         train_ndvi_input_ext = extractor.fit_transform(train_ndvi_input)
         test_ndvi_input_ext = extractor.fit_transform(test_ndvi_input)
         history = {"val_loss": [0.0], "loss": [0.0]}
     elif mode.startswith("umap"):
-        n_neighbors = int(mode.split("-")[1])
+        n_neighbors = int(mode.split("-")[2])
+        distance_metric = mode.split("-")[1]
+
         if num_features_to_extract == -1:
             pca = PCA()
             pca.fit(train_ndvi_input)
@@ -205,7 +233,12 @@ def extract_features(
             pca = PCA(n_components=num_features_to_extract)
             pca.fit(train_ndvi_input)
             num_features_to_extract = pca.n_components_
-        extractor = umap.UMAP(n_neighbors=n_neighbors, n_components=num_features_to_extract)
+        if num_features_to_extract == 0:
+            num_features_to_extract = 1
+        
+        extractor = umap.UMAP(n_neighbors=n_neighbors, 
+                              metric=distance_metric,
+                              n_components=num_features_to_extract)
         train_ndvi_input_ext = extractor.fit_transform(train_ndvi_input)
         test_ndvi_input_ext = extractor.transform(test_ndvi_input)
         history = {"val_loss": [0.0], "loss": [0.0]}
@@ -220,7 +253,8 @@ def extract_features(
             pca = PCA(n_components=num_features_to_extract)
             pca.fit(train_ndvi_input)
             num_features_to_extract = pca.n_components_
-            
+        if num_features_to_extract == 0:
+            num_features_to_extract = 1
         random_cols = np.random.choice(train_ndvi_input.shape[1], num_features_to_extract, replace=False)
         train_ndvi_input_ext = train_ndvi_input[:, random_cols]
         test_ndvi_input_ext = test_ndvi_input[:, random_cols]

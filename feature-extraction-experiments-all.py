@@ -99,10 +99,17 @@ def experiment(
         "mutual-info-regression"
     ]
     FEATURE_EXTRACTION_ALGORITHMS = [
-        "autoencoder",
+        #"autoencoder-linear",
+        #"autoencoder-nonlinear",
         "random",
-        "umap-15",
-        "umap-5",
+        "pca-umap-euclidean-15",
+        "pca-umap-euclidean-5",
+        "umap-euclidean-15",
+        "umap-euclidean-5",
+        "umap-manhattan-15",
+        "umap-manhattan-5",
+        "umap-cosine-15",
+        "umap-cosine-5",
         "pca",
         "all",
     ]  # ["autoencoder"
@@ -342,8 +349,8 @@ def experiment(
                                                                             ]
                                                                         else:
                                                                             FEATURES_TO_EXTRACT = [
-                                                                                -1,
-                                                                                0.95,
+                                                                                #-1,
+                                                                                #0.95,
                                                                                 0.99,
                                                                                 features_to_select
                                                                                 // 2,
